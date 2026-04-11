@@ -1,0 +1,208 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dev1
+---
+# apiVersion: v1
+# kind: LimitRange
+# metadata:
+#   name: default-cpu-mem-limit-range
+#   namespace: dev1
+# spec:
+#   limits:
+#     - default:
+#         cpu: "500m"
+#         memory: "256Mi"
+#       defaultRequest:
+#         cpu: "1000m"
+#         memory: "512Mi"
+# ---
+# apiVersion: v1
+# kind: ResourceQuota
+# metadata:
+#   name: ns-resource-quota
+#   namespace: dev1
+# spec:
+#   hard:
+#     requests.cpu: "1"
+#     requests.memory: 1Gi
+#     limits.cpu: "2"
+#     limits.memory: 2Gi
+#     pods: "5"
+#     configmaps: "5"
+#     persistentvolumeclaims: "5"
+#     secrets: "5"
+#     services: "5"
+# ---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ebs-sc
+provisioner: ebs.csi.aws.com
+volumeBindingMode: WaitForFirstConsumer
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ebs-mysql-pv-claim
+  namespace: dev1
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ebs-sc
+  resources:
+    requests:
+      storage: 4Gi
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-db-password
+  namespace: dev1
+type: Opaque
+data:
+  db_password: cGFzc3dvcmQ=
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: usermanagement-dbcreation-script
+  namespace: dev1
+data:
+  mysql_usermgmt.sql: |-
+    DROP DATABASE IF EXISTS usermgmt;
+    CREATE DATABASE usermgmt;
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: dev1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:5.6
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-db-password
+                  key: db_password
+          ports:
+            - containerPort: 3306
+              name: mysql
+          volumeMounts:
+            - name: mysql-persistent-storage
+              mountPath: /var/lib/mysql
+            - name: usermanagement-dbcreation-script
+              mountPath: /docker-entrypoint-initdb.d
+      volumes:
+        - name: mysql-persistent-storage
+          persistentVolumeClaim:
+            claimName: ebs-mysql-pv-claim
+        - name: usermanagement-dbcreation-script
+          configMap:
+            name: usermanagement-dbcreation-script
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: dev1
+spec:
+  selector:
+    app: mysql
+  ports:
+    - port: 3306
+  clusterIP: None
+---
+apiVersion: apps/v1
+kind: Deployment
+# http://<Worker-IP-Address>:31200/usermgmt/health-status
+metadata:
+  name: usermgmt-microservice
+  namespace: dev1
+  labels:
+    app: usermgmt-restapp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: usermgmt-restapp
+  template:
+    metadata:
+      labels:
+        app: usermgmt-restapp
+    spec:
+      initContainers:
+        - name: init-db
+          image: busybox:1.31
+          command: ['sh', '-c', 'echo - e "Checking for the availability of MySQL Server deployment"; while ! nc -z mysql 3306; do sleep 1; printf "-"; done; echo -e " >> MYSQL DB Server has started";']
+      containers:
+        - name: usermgmt-restapp
+          image: stacksimplify/kube-usermanagement-microservice:1.0.0
+          ports:
+            - containerPort: 8095
+          env:
+            - name: DB_HOSTNAME
+              value: "mysql"
+            - name: DB_PORT
+              value: "3306"
+            - name: DB_NAME
+              value: "usermgmt"
+            - name: DB_USERNAME
+              value: "root"
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-db-password
+                  key: db_password
+          
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - nc -z localhost 8095
+            initialDelaySeconds: 60
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /usermgmt/health-status
+              port: 8095
+            initialDelaySeconds: 60
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "128Mi"
+            limits:
+              cpu: "1000m"
+              memory: "500Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: usermgmt-restapp-service
+  namespace: dev1
+  labels:
+    app: usermgmt-restapp
+spec:
+  type: NodePort
+  selector:
+    app: usermgmt-restapp
+  ports:
+    - port: 8095
+      targetPort: 8095
+      nodePort: 31200

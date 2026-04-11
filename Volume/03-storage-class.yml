@@ -1,0 +1,52 @@
+# eksctl create cluster --name=eksdemo --region=ap-south-1 --without-nodegroup
+# eksctl utils associate-iam-oidc-provider --region=ap-south-1 --cluster eksdemo --approve
+# eksctl create nodegroup --cluster=eksdemo --region=ap-south-1 --name=eksdemo-nodegroup --node-type=t2.large --nodes=1 --nodes-min=1 --nodes-max=2 --node-volume-size=20 --ssh-access --ssh-public-key=Pass --managed --asg-access --external-dns-access --full-ecr-access --appmesh-access --alb-ingress-access
+# kubectl -n kube-system describe configmap aws-auth
+# kubectl apply -k "github.com/kubernetes-sigs/aws-ebs-csi-driver/deploy/kubernetes/overlays/stable/?ref=master"
+
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ebs-sc
+provisioner: ebs.csi.aws.com
+volumeBindingMode: Immediate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: aws-ebs-vol
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 8Gi
+  storageClassName: ebs-sc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: aws-ebs-vol-2
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 25Gi
+  storageClassName: ebs-sc
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-pod
+spec:
+  volumes:
+    - name: pv
+      persistentVolumeClaim:
+        claimName: aws-ebs-vol
+  containers:
+    - name: app-container
+      image: nginx
+      volumeMounts:
+        - mountPath: "/usr/share/nginx/html"
+          name: pv

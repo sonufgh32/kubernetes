@@ -1,0 +1,61 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-db-password
+type: Opaque
+data:
+  db_password: cGFzc3dvcmQ=
+
+
+# apt-get install etcd-client
+
+# ETCDCTL_API=3 etcdctl \
+#   --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+#   --cert=/etc/kubernetes/pki/etcd/server.crt \
+#   --key=/etc/kubernetes/pki/etcd/server.key \
+#   get /registry/secrets/default/<SECRET_NAME> | hexdump -C
+
+sudo ETCDCTL_API=3 etcdctl \
+  --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+  --cert=/etc/kubernetes/pki/etcd/server.crt \
+  --key=/etc/kubernetes/pki/etcd/server.key \
+  get /registry/secrets/default/my-secret | hexdump -C
+
+# sudo ETCDCTL_API=3 etcdctl \
+#   --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+#   --cert=/etc/kubernetes/pki/etcd/server.crt \
+#   --key=/etc/kubernetes/pki/etcd/server.key \
+#   get /registry --prefix --limit=10
+
+# vi /etc/kubernetes/manifests/kube-apiserver.yaml
+
+# Generate a 32-byte random key and base64 encode it
+# -> head -c 32 /dev/urandom | base64
+
+# openssl x509 -in /etc/kubernetes/pki/etcd/server.crt -text -noout
+# openssl x509 -in /etc/kubernetes/pki/etcd/ca.crt -text -noout
+# openssl x509 -in /etc/kubernetes/pki/etcd/server.crt -text -noout
+
+# --encryption-provider-config=/etc/kubernetes/enc/enc.yaml --> in api-server.yaml
+# - name: enc
+#   mountPath: /etc/kubernetes/enc
+#   readonly: true
+
+# kubectl get secrets --all-namespaces -o json | kubectl replace -f -
+
+# - name: enc
+#   hostPath:
+#     path: /etc/kubernetes/enc
+#     type: DirectoryOrCreate
+
+apiVersion: apiserver.config.k8s.io/v1
+kind: EncryptionConfiguration
+resources:
+  - resources:
+      - secrets
+    providers:
+      - aescbc:
+          keys:
+            - name: key1
+              secret: +lLQs2uytEv02S2WMzWEFaZ3yuB4yhluADkAJyqgvhU=
+      - identity: {}

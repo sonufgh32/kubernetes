@@ -1,0 +1,97 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+spec:
+  serviceName: "mysql"
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql
+        # command:
+        #   - '/bin/bash'
+        #   - '-c'
+        #   - |
+        #     if [ $(echo $HOSTNAME | grep -o '[0-9]*') -eq 0 ]; then
+        #       # echo "[mysqld]" >> /etc/mysql/conf.d/my.cnf
+        #       # echo "server-id=1" >> /etc/mysql/conf.d/my.cnf
+        #       # echo "log-bin=mysql-bin" >> /etc/mysql/conf.d/my.cnf
+        #       # echo "binlog-format=ROW" >> /etc/mysql/conf.d/my.cnf
+              
+        #       until mysqladmin ping -h localhost --silent; do sleep 5; done
+              
+        #       # Create replication user on master
+              
+        #       mysql -h localhost -uroot -p$MYSQL_ROOT_PASSWORD -e "
+        #         CREATE USER IF NOT EXISTS 'replica_user'@'%' IDENTIFIED BY '$MYSQL_REPLICATION_PASSWORD';
+        #         GRANT REPLICATION SLAVE ON *.* TO 'replica_user'@'%';
+        #         FLUSH PRIVILEGES;"
+        #     else
+        #       SERVER_ID=$(($(echo $HOSTNAME | grep -o '[0-9]*') + 1))
+              
+        #       # echo "[mysqld]\nserver-id=$SERVER_ID" > /etc/mysql/conf.d/my.cnf
+
+        #       until mysql -h mysql-0.mysql.default.svc.cluster.local -uroot -p$MYSQL_ROOT_PASSWORD -e "select 1"; do sleep 5; done
+
+        #       mysql -ureplica_user -p$MYSQL_ROOT_PASSWORD -h mysql-0.mysql.default.svc.cluster.local -e "
+        #         CHANGE MASTER TO 
+        #           MASTER_HOST='mysql-0.mysql.default.svc.cluster.local', 
+        #           MASTER_USER='replica_user', 
+        #           MASTER_PASSWORD='$MYSQL_REPLICATION_PASSWORD', 
+        #           MASTER_LOG_FILE='mysql-bin.000001', 
+        #           MASTER_LOG_POS=4;
+        #         START SLAVE;"
+        #     fi;
+        ports:
+        - containerPort: 3306
+          name: mysql
+        
+        # readinessProbe:
+        #   tcpSocket:
+        #     port: 3306
+        #   initialDelaySeconds: 60
+        #   periodSeconds: 10
+
+        env:
+          - name: MYSQL_ROOT_PASSWORD
+            value: password
+          - name: MYSQL_REPLICATION_PASSWORD
+            value: password
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+  volumeClaimTemplates:
+  - metadata:
+      name: mysql-persistent-storage
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 1Gi
+
+CHANGE MASTER TO
+MASTER_HOST="mysql-0.mysql.default.svc.cluster.local",
+MASTER_USER="replica_user",
+MASTER_PASSWORD="password",
+MASTER_LOG_FILE="mysql-bin.000001",
+MASTER_LOG_POS=4; START SLAVE;"
+

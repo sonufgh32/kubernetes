@@ -1,0 +1,11 @@
+apiVersion: rabc.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: default
+  name: pod-reader
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "watch", "list"]
+
+# kubectl auth can-i get pod --as jack
