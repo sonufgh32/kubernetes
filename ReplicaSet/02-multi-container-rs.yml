@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: multi-container-rs
+  labels:
+    app: myapp
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+    spec:
+      containers:
+        - name: main-container
+          image: nginx:latest
+          ports:
+            - containerPort: 80
+
+        - name: sidecar-container
+          image: busybox
+          command: ["sh", "-c", "while true; do echo Hello from sidecar; sleep 5; done"]
